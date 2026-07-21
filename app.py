@@ -26,20 +26,22 @@ st.markdown(
 # --- Sidebar Inputs for User Interactivity ---
 st.sidebar.header("Scraper Configuration")
 search_query = st.sidebar.text_input(
-    "Search Keyword", value="data analyst shirt"
+    "Search Keyword", value="gaming laptop"
 )
 max_pages = st.sidebar.slider("Select Number of Pages to Scrape", 1, 5, 2)
 
-formatted_query = search_query.replace(" ", "%2B")
+formatted_query = search_query.replace(" ", "+")
 
 # --- Action Button to Run Scraper on Cloud ---
 if st.sidebar.button("🚀 Run Scraper Now"):
   headers = {
       "User-Agent": (
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
-          " like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          " like Gecko) Chrome/122.0.0.0 Safari/537.36"
       ),
       "Accept-Language": "en-US,en;q=0.9",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Referer": "https://www.amazon.com/",
   }
 
   today = datetime.date.today()
@@ -65,34 +67,44 @@ if st.sidebar.button("🚀 Run Scraper Now"):
       URL = f"https://www.amazon.com/s?k={formatted_query}&page={page_num}"
 
       try:
-        page = requests.get(URL, headers=headers)
-        page.raise_for_status()
-      except requests.exceptions.RequestException:
+        response = requests.get(URL, headers=headers)
+        response.raise_for_status()
+      except requests.exceptions.RequestException as e:
+        st.error(f"Request failed: {e}")
         continue
 
-      soup = BeautifulSoup(page.content, "html.parser")
+      soup = BeautifulSoup(response.content, "html.parser")
+      
+      # Flexible product container search
       products = soup.find_all("div", {"data-component-type": "s-search-result"})
+      if not products:
+        # Fallback search if container attribute differs
+        products = soup.select("div.s-result-item[data-asin]")
 
       for product in products:
         try:
-          title_elem = product.find("h2", class_="a-size-base-plus")
-          if not title_elem:
-            title_elem = product.find("span", class_="a-text-normal")
+          # Flexible title extraction across categories
+          title_elem = (
+              product.find("h2", class_="a-size-base-plus") or
+              product.find("span", class_="a-text-normal") or
+              product.find("h2", class_="a-size-medium")
+          )
           title = title_elem.get_text().strip() if title_elem else "N/A"
 
-          price_parent = product.find("span", class_="a-price")
-          if price_parent:
-            whole_price = price_parent.find("span", class_="a-price-whole")
+          # Flexible price extraction
+          price_elem = product.find("span", class_="a-price")
+          if price_elem:
+            whole_price = price_elem.find("span", class_="a-price-whole")
             price = whole_price.get_text().strip() if whole_price else "N/A"
           else:
-            price = "N/Ai"
+            price = "N/A"
 
           if title != "N/A" and price != "N/A" and len(title) > 5:
             writer.writerow([title, price, today])
             total_new_rows += 1
         except Exception:
           continue
-      time.sleep(1)
+      time.sleep(2)
 
   status_text.text("Scraping completed!")
   progress_bar.empty()
